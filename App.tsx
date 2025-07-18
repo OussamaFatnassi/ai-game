@@ -1,13 +1,12 @@
-
-import React, { useState, useCallback } from 'react';
-import { GameState, SceneData, SetupConfig } from './types';
-import { generateInitialScene, generateNextScene, generateImage } from './services/geminiService';
-import Header from './components/Header';
-import StoryDisplay from './components/StoryDisplay';
-import ActionButtons from './components/ActionButtons';
-import Inventory from './components/Inventory';
-import LoadingSpinner from './components/LoadingSpinner';
-import SetupScreen from './components/SetupScreen';
+import React, { useState, useCallback } from "react";
+import { GameState, SceneData, SetupConfig } from "./types";
+import { generateInitialScene, generateNextScene, generateImage } from "./services/geminiService";
+import Header from "./components/Header";
+import StoryDisplay from "./components/StoryDisplay";
+import ActionButtons from "./components/ActionButtons";
+import Inventory from "./components/Inventory";
+import LoadingSpinner from "./components/LoadingSpinner";
+import SetupScreen from "./components/SetupScreen";
 
 const App: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>({
@@ -19,6 +18,7 @@ const App: React.FC = () => {
   });
   const [isGameStarted, setIsGameStarted] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isImageLoading, setIsImageLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleStartGame = useCallback(async (config: SetupConfig) => {
@@ -34,7 +34,7 @@ const App: React.FC = () => {
         currentScene: {
           description: initialSceneData.description,
           actions: initialSceneData.actions,
-          imagePrompt: initialSceneData.imagePrompt
+          imagePrompt: initialSceneData.imagePrompt,
         },
         inventory: initialSceneData.newInventoryItems,
         imageUrl: imageUrl,
@@ -42,7 +42,7 @@ const App: React.FC = () => {
       });
     } catch (e) {
       console.error(e);
-      setError('Failed to start the adventure. Please check your API key and try again.');
+      setError("Failed to start the adventure. Please check your API key and try again.");
       setIsGameStarted(false); // Go back to setup on error
     } finally {
       setIsLoading(false);
@@ -55,49 +55,55 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
-    const newStoryLog = [...gameState.storyLog, `> ${action}`, ''];
-    setGameState(prev => ({...prev, currentScene: {...prev.currentScene!, actions: []}})); // Disable buttons immediately
+    const newStoryLog = [...gameState.storyLog, `> ${action}`, ""];
+    setGameState((prev) => ({ ...prev, currentScene: { ...prev.currentScene!, actions: [] } })); // Disable buttons immediately
 
     try {
-        const nextSceneData: SceneData = await generateNextScene(
-            gameState.genre,
-            gameState.storyLog,
-            gameState.inventory,
-            action
-        );
+      const nextSceneData: SceneData = await generateNextScene(
+        gameState.genre,
+        gameState.storyLog,
+        gameState.inventory,
+        action,
+      );
 
-        // Start image generation but don't wait for it to update text
-        generateImage(nextSceneData.imagePrompt).then(newImageUrl => {
-            setGameState(prev => ({ ...prev, imageUrl: newImageUrl }));
-        }).catch(e => {
-            console.error("Image generation failed for next scene:", e);
+      // Start image generation and show loader
+      setIsImageLoading(true);
+      generateImage(nextSceneData.imagePrompt)
+        .then((newImageUrl) => {
+          setGameState((prev) => ({ ...prev, imageUrl: newImageUrl }));
+          setIsImageLoading(false);
+        })
+        .catch((e) => {
+          console.error("Image generation failed for next scene:", e);
+          setIsImageLoading(false);
         });
 
-        const newInventory = [...new Set([...gameState.inventory, ...nextSceneData.newInventoryItems])];
-        newStoryLog[newStoryLog.length - 1] = nextSceneData.description;
+      const newInventory = [...new Set([...gameState.inventory, ...nextSceneData.newInventoryItems])];
+      newStoryLog[newStoryLog.length - 1] = nextSceneData.description;
 
-        setGameState(prev => ({
-            ...prev,
-            storyLog: newStoryLog,
-            currentScene: {
-                description: nextSceneData.description,
-                actions: nextSceneData.actions,
-                imagePrompt: nextSceneData.imagePrompt
-            },
-            inventory: newInventory,
-            imageUrl: prev.imageUrl, // keep old image until new one loads
-        }));
+      setGameState((prev) => ({
+        ...prev,
+        storyLog: newStoryLog,
+        currentScene: {
+          description: nextSceneData.description,
+          actions: nextSceneData.actions,
+          imagePrompt: nextSceneData.imagePrompt,
+        },
+        inventory: newInventory,
+        imageUrl: null, // Clear the image to show loader
+      }));
     } catch (e) {
-        console.error(e);
-        setError('The story could not continue. An unexpected error occurred.');
+      console.error(e);
+      setError("The story could not continue. An unexpected error occurred.");
     } finally {
-        setIsLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleRestart = () => {
     setError(null);
     setIsGameStarted(false);
+    setIsImageLoading(false);
     setGameState({
       storyLog: [],
       currentScene: null,
@@ -129,23 +135,23 @@ const App: React.FC = () => {
 
     if (isLoading && !gameState.currentScene) {
       return (
-          <div className="flex flex-col items-center justify-center gap-4">
-              <LoadingSpinner />
-              <p className="text-xl text-[hsl(var(--muted-foreground))]">Summoning the world...</p>
-          </div>
+        <div className="flex flex-col items-center justify-center gap-4">
+          <LoadingSpinner />
+          <p className="text-xl text-[hsl(var(--muted-foreground))]">Summoning the world...</p>
+        </div>
       );
     }
 
     if (!gameState.currentScene) {
       return (
         <div className="text-center">
-            <p className="mb-4">Could not load the scene.</p>
-            <button
-                onClick={handleRestart}
-                className="px-6 py-2 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-bold rounded-md transition-colors hover:bg-[hsl(var(--primary))]/90"
-            >
-              Start Over
-            </button>
+          <p className="mb-4">Could not load the scene.</p>
+          <button
+            onClick={handleRestart}
+            className="px-6 py-2 bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] font-bold rounded-md transition-colors hover:bg-[hsl(var(--primary))]/90"
+          >
+            Start Over
+          </button>
         </div>
       );
     }
@@ -153,11 +159,15 @@ const App: React.FC = () => {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 h-full w-full">
         <div className="lg:col-span-3 h-full">
-            <StoryDisplay description={gameState.currentScene.description} imageUrl={gameState.imageUrl} />
+          <StoryDisplay
+            description={gameState.currentScene.description}
+            imageUrl={gameState.imageUrl}
+            isImageLoading={isImageLoading}
+          />
         </div>
         <div className="lg:col-span-2 flex flex-col justify-between h-full gap-8">
-            <Inventory items={gameState.inventory} />
-            <ActionButtons actions={gameState.currentScene.actions} onAction={handleAction} isLoading={isLoading} />
+          <Inventory items={gameState.inventory} />
+          <ActionButtons actions={gameState.currentScene.actions} onAction={handleAction} isLoading={isLoading} />
         </div>
       </div>
     );
@@ -166,9 +176,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))] p-4 sm:p-6 lg:p-8 flex flex-col">
       <Header />
-      <main className="flex-grow container mx-auto mt-8 flex items-center justify-center">
-        {renderContent()}
-      </main>
+      <main className="flex-grow container mx-auto mt-8 flex items-center justify-center">{renderContent()}</main>
     </div>
   );
 };
